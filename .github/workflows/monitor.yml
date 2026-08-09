@@ -1,0 +1,55 @@
+# このファイルは リポジトリの .github/workflows/monitor.yml に置きます。
+# フォルダ名・ファイル名の場所が違うとGitHubが認識しないので注意してください。
+
+name: FINDME STORE monitor
+
+on:
+  schedule:
+    # 「30分ごとに動かして」という意味の書き方（cron記法）
+    - cron: "*/30 * * * *"
+  # 手動で試せるボタンをActions画面に出す設定。動作確認に必須です
+  workflow_dispatch:
+
+# state.json をリポジトリに書き戻すために、書き込み権限を与えます
+permissions:
+  contents: write
+
+# 前の実行が終わる前に次が始まって記憶が壊れるのを防ぎます
+concurrency:
+  group: findme-monitor
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      # 1. リポジトリの中身（monitor.py と state.json）を作業machineに持ってくる
+      - name: リポジトリを取得
+        uses: actions/checkout@v4
+
+      # 2. Python をインストールする（PC版でやった作業のクラウド版）
+      - name: Python を準備
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # 3. requests ライブラリを入れる（pip install requests のクラウド版）
+      - name: ライブラリを準備
+        run: pip install requests
+
+      # 4. 監視プログラムを1回実行する
+      #    Webhook URL は Secrets から環境変数として渡します
+      - name: 監視を実行
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: python monitor.py
+
+      # 5. 更新された state.json をリポジトリに保存し直す（＝次回への記憶の引き継ぎ）
+      - name: 記憶を保存
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state.json
+          # 変更が無いときに commit するとエラーになるので、その場合はスキップ
+          git diff --staged --quiet || git commit -m "update state"
+          git push
